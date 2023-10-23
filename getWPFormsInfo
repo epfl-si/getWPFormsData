@@ -1,0 +1,23 @@
+#!/bin/bash
+#set -e -x
+
+input="urlsWithoutZeroForms.txt"
+siteFormIDs=$(mktemp)
+resultjson="resultjson.json"
+
+while IFS= read -r path
+do
+  echo "--$path"
+  ssh -n wwp-prod -- "wp db query --path=$path 'SELECT ID FROM wp_posts wp WHERE wp.post_type='\''wpforms'\'' AND wp.post_status='\''publish'\'';' --skip-column-names;" 2>/dev/null > "$siteFormIDs"
+
+  while read -r formID
+  do
+    echo -n "$formID : "
+    ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_title FROM wp_posts wp WHERE wp.post_type='\''wpforms'\'' AND wp.post_status='\''publish'\'';' --skip-column-names;" 2>/dev/null
+    ssh -n wwp-prod -- "wp db query --path=$path 'SELECT (SELECT CASE WHEN EXISTS (SELECT post_title FROM wp_posts wp WHERE wp.ID=$formID AND post_content LIKE '\''%type\":\"file-upload%'\''
+		)	THEN 'TRUE' ELSE 'FALSE' END) as hasUploadField FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null
+    ssh -n wwp-prod -- "wp db query --path=$path 'SELECT COUNT(*) as numberOfEntries FROM wp_wpforms_entries WHERE form_id=$formID;' --skip-column-names;" 2>/dev/null
+
+  done < "$siteFormIDs"
+
+done < "$input"
