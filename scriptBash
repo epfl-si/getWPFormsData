@@ -1,0 +1,11 @@
+#!/bin/bash
+
+input="urlsForSQL.txt"
+
+echo "path,nb form/site"
+
+while IFS= read -r line
+do
+  echo -n "$line,";
+  ssh -n wwp-prod -- "wp db query --path=$line 'SELECT COUNT(DISTINCT(form_id)) FROM wp_wpforms_entries;' --skip-column-names";
+done < "$input"

@@ -1,0 +1,20 @@
+#!/bin/bash
+
+input="urlsForSQL.txt"
+temp="output.txt"
+resultjson="resultjson.json"
+
+while IFS= read -r line
+do
+  #echo -n "$line," > outputs/output"$i".txt;
+  ssh -n wwp-prod -- "wp db query --path=$line 'SELECT COUNT(form_id) FROM wp_wpforms_entries;' --skip-column-names;'" > $temp;
+  while read -r line2
+  do
+    ssh -n wwp-prod -- "wp db query --path=$line 'SELECT DISTINCT(wp_posts.ID), wp_posts.post_title, COUNT(*) 
+    FROM wp_wpforms_entries INNER JOIN wp_posts ON wp_wpforms_entries.$line2=wp_posts.ID GROUP BY wp_wpforms_entries.form_id;' --skip-column-names;'" > $resultjson;
+    echo resultjson
+  done < "$temp"
+  
+done < "$input"
+
+
