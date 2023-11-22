@@ -3,18 +3,16 @@
 #
 # You can specify the files' name with:
 #        SITES_URLS_FILE=sites_urls.txt \
-#        SITES_PATHS_FILE=sites_paths.txt \
 #        DATA_CSV_FILE=forms_data.csv \
 #        ./getFormsData.sh
 
 # Default files names
 SITES_URLS_FILE="${SITES_URLS_FILE:-sites_urls.txt}"
-SITES_PATHS_FILE="${SITES_PATHS_FILE:-sites_paths.txt}"
 DATA_CSV_FILE="${DATA_CSV_FILE:-forms_data.csv}"
 
 # Retrieve the sites that have the WPForms category
 if [ ! -f "$SITES_URLS_FILE" ]; then
-  curl https://wp-veritas.epfl.ch/api/v1/categories/WPForms/sites | jq  '.[] | .url' > $SITES_URLS_FILE
+  curl https://wp-veritas.epfl.ch/api/v1/categories/WPForms/sites | jq -r '.[] | .url' > $SITES_URLS_FILE
 fi
 
 # Function that convert URL to site's path on the server
@@ -40,26 +38,23 @@ URLtoPath () {
   fi
 }
 
-# Clear the $SITES_PATHS_FILE file
-echo "" > $SITES_PATHS_FILE
-
-# Convert each URL to path and save them in $SITES_PATHS_FILE
-while IFS= read -r line; do 
-  echo "Getting data from $line";
-  URLtoPath $line >> $SITES_PATHS_FILE;
-done < $SITES_URLS_FILE
-
 # Generate the $DATA_CSV_FILE CSV file based on each path of $SITES_PATHS_FILE
-echo "path|formID|postTitle|hasUploadField|hasPayOnline|payOnlineID|payOnlineIDnumberOfEntries|numberOfEntries" > $DATA_CSV_FILE
-while IFS= read -r path
+echo "URL|path|formID|postTitle|hasUploadField|isPayOnlineEnable|payOnlineID|payOnlineEmail|numberOfEntries" > $DATA_CSV_FILE
+while IFS= read -r url
 do
+  path=$(URLtoPath $url)
   formIDs=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT ID FROM wp_posts wp WHERE wp.post_type='\''wpforms'\'' AND wp.post_status='\''publish'\'';' --skip-column-names;" 2>/dev/null)
-  for formID in $formIDs; do 
-    postTitle=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_title FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null)
-    hasUploadField=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT (SELECT CASE WHEN EXISTS (SELECT post_title FROM wp_posts wp WHERE wp.ID=$formID AND post_content LIKE '\''%type\":\"file-upload%'\'')	THEN 'TRUE' ELSE 'FALSE' END) as hasUploadField FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null)
-    hasPayOnline=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT (SELECT CASE WHEN EXISTS (SELECT post_content FROM wp_posts wp WHERE wp.ID=$formID AND post_content LIKE '\''%enable\":\"1%'\'')	THEN 'TRUE' ELSE 'FALSE' END) as hasPayOnline FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null)
-    postContentJSON=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_content FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" | ggrep -oP '(?<="id_inst":)"([^"]*)' 2>/dev/null)
-    numberOfEntries=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT COUNT(*) as numberOfEntries FROM wp_wpforms_entries WHERE form_id=$formID;' --skip-column-names;" 2>/dev/null)
-    echo "$path|$formID|$postTitle|$hasUploadField|$hasPayOnline|$hasPayOnline|$postContentJSON|$numberOfEntries|" >> $DATA_CSV_FILE
-  done
-done < "$SITES_PATHS_FILE"
+  if [ ! -z "$formIDs" ]; then
+    for formID in $formIDs; do 
+      postTitle=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_title FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null)
+      hasUploadField=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT (SELECT CASE WHEN EXISTS (SELECT post_title FROM wp_posts wp WHERE wp.ID=$formID AND post_content LIKE '\''%type\":\"file-upload%'\'')	THEN 'TRUE' ELSE 'FALSE' END) as hasUploadField FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null)
+      isPayOnlineEnable=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_content FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" | sed 's/\\\\/\\/g' | jq -r '.payments.epfl_payonline.enable // 0' 2>/dev/null)
+      payOnlineID=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_content FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" | sed 's/\\\\/\\/g' | jq -r '.payments.epfl_payonline.id_inst // 0' 2>/dev/null)
+      payOnlineEmail=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_content FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" | sed 's/\\\\/\\/g' | jq -r '.payments.epfl_payonline.email // 0' 2>/dev/null)
+      numberOfEntries=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT COUNT(*) as numberOfEntries FROM wp_wpforms_entries WHERE form_id=$formID;' --skip-column-names;" 2>/dev/null)
+      echo "$url|$path|$formID|$postTitle|$hasUploadField|$isPayOnlineEnable|$payOnlineID|$payOnlineEmail|$numberOfEntries" >> $DATA_CSV_FILE
+    done
+  else 
+    echo "$url|$path|-|-|0|0|-|-|0" >> $DATA_CSV_FILE
+  fi
+done < $SITES_URLS_FILE 
