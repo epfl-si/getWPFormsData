@@ -6,15 +6,25 @@
 #        SITES_PATHS_FILE=sites_paths.txt \
 #        DATA_CSV_FILE=forms_data.csv \
 #        ./getFormsData.sh
+#
+# Use `--clear` to remove all the previously generated files
+#
 
 # Default files names
 SITES_URLS_FILE="${SITES_URLS_FILE:-sites_urls.txt}"
 SITES_PATHS_FILE="${SITES_PATHS_FILE:-sites_paths.txt}"
 DATA_CSV_FILE="${DATA_CSV_FILE:-forms_data.csv}"
 
+if [ "$1" == '--clear' ]; then
+  rm ${SITES_URLS_FILE} || true
+  rm ${SITES_PATHS_FILE} || true
+  rm ${DATA_CSV_FILE} || true
+fi
+
 # Retrieve the sites that have the WPForms category
 if [ ! -f "$SITES_URLS_FILE" ]; then
-  curl https://wp-veritas.epfl.ch/api/v1/categories/WPForms/sites | jq  '.[] | .url' > $SITES_URLS_FILE
+  echo "Retrieving sites list from wp-veritas.epfl.ch"
+  curl -s https://wp-veritas.epfl.ch/api/v1/categories/WPForms/sites | jq  '.[] | .url' > $SITES_URLS_FILE
 fi
 
 # Function that convert URL to site's path on the server
@@ -40,19 +50,19 @@ URLtoPath () {
   fi
 }
 
-# Clear the $SITES_PATHS_FILE file
-echo "" > $SITES_PATHS_FILE
-
-# Convert each URL to path and save them in $SITES_PATHS_FILE
-while IFS= read -r line; do 
-  echo "Getting data from $line";
-  URLtoPath $line >> $SITES_PATHS_FILE;
-done < $SITES_URLS_FILE
+if [ ! -f "$SITES_PATHS_FILE" ]; then
+  # Convert each URL to path and save them in $SITES_PATHS_FILE
+  while IFS= read -r line; do 
+    echo "Extracting path from $line";
+    URLtoPath $line >> $SITES_PATHS_FILE;
+  done < $SITES_URLS_FILE
+fi
 
 # Generate the $DATA_CSV_FILE CSV file based on each path of $SITES_PATHS_FILE
 echo "path|formID|postTitle|hasUploadField|hasPayOnline|payOnlineID|payOnlineIDnumberOfEntries|numberOfEntries" > $DATA_CSV_FILE
 while IFS= read -r path
 do
+  echo "Running wp cli for $path"
   formIDs=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT ID FROM wp_posts wp WHERE wp.post_type='\''wpforms'\'' AND wp.post_status='\''publish'\'';' --skip-column-names;" 2>/dev/null)
   for formID in $formIDs; do 
     postTitle=$(ssh -n wwp-prod -- "wp db query --path=$path 'SELECT post_title FROM wp_posts wp WHERE wp.ID=$formID;' --skip-column-names;" 2>/dev/null)
