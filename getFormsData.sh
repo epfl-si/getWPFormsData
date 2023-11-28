@@ -10,6 +10,12 @@
 SITES_URLS_FILE="${SITES_URLS_FILE:-sites_urls.txt}"
 DATA_CSV_FILE="${DATA_CSV_FILE:-forms_data.csv}"
 
+if [ "$1" == '--clear' ]; then
+  rm ${SITES_URLS_FILE} || true
+  rm ${SITES_PATHS_FILE} || true
+  rm ${DATA_CSV_FILE} || true
+fi
+
 # Retrieve the sites that have the WPForms category
 if [ ! -f "$SITES_URLS_FILE" ]; then
   curl https://wp-veritas.epfl.ch/api/v1/categories/WPForms/sites | jq -r '.[] | .url' > $SITES_URLS_FILE
@@ -37,6 +43,14 @@ URLtoPath () {
     echo "/srv/subdomains-lite/${subdomainlite_name}.epfl.ch/htdocs/"
   fi
 }
+
+if [ ! -f "$SITES_PATHS_FILE" ]; then
+  # Convert each URL to path and save them in $SITES_PATHS_FILE
+  while IFS= read -r line; do 
+    echo "Extracting path from $line";
+    URLtoPath $line >> $SITES_PATHS_FILE;
+  done < $SITES_URLS_FILE
+fi
 
 # Generate the $DATA_CSV_FILE CSV file based on each path of $SITES_PATHS_FILE
 echo "URL|path|formID|postTitle|hasUploadField|isPayOnlineEnable|payOnlineID|payOnlineEmail|numberOfEntries" > $DATA_CSV_FILE
