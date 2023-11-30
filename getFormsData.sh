@@ -31,7 +31,7 @@ URLtoPath () {
     echo "/srv/labs/www.epfl.ch/htdocs/labs/${lab_name}"
   elif [[ $1 =~ (www.epfl.ch/research/) ]]; then
     research_name=$(echo $1 | sed -n 's/https:\/\/www.epfl.ch\/research\///gp' | tr -d '"')
-    echo "/srv/www/www.epfl.ch/htdocs/research/domains/${research_name}"
+    echo "/srv/www/www.epfl.ch/htdocs/research/${research_name}"
   elif [[ $1 =~ (www.epfl.ch/schools/) ]]; then
     school_name=$(echo $1 | sed -n 's/https:\/\/www.epfl.ch\/schools\///gp' | tr -d '"')
     echo "/srv/www/www.epfl.ch/htdocs/schools/${school_name}"
