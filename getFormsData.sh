@@ -20,8 +20,12 @@ fi
 
 # Retrieve the sites that have the WPForms category
 if [ ! -f "$SITES_URLS_FILE" ]; then
-  echo "Retrieving sites list from wp-veritas.epfl.ch"
+  echo "Retrieving the list of site that belong to the WPForms category on wp-veritas.epfl.ch (see '$SITES_URLS_FILE')."
   curl -s https://wp-veritas.epfl.ch/api/v1/categories/WPForms/sites | jq -r '.[] | .url' > "$SITES_URLS_FILE"
+  sort -o "$SITES_URLS_FILE" "$SITES_URLS_FILE"
+  echo " ↳ $(wc -l < "$SITES_URLS_FILE") sites retrieved."
+else
+  echo "Using '$SITES_URLS_FILE' with $(wc -l < "$SITES_URLS_FILE") sites."
 fi
 
 # Function that convert URL to site's path on the server
